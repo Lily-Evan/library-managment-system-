@@ -1,0 +1,260 @@
+
+import React, { useState, useEffect } from "react";
+import { Rental, Book } from "@/entities/all";
+import { User } from "@/entities/User";
+import { createPageUrl } from "@/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Calendar, Clock, CheckCircle, AlertTriangle } from "lucide-react";
+import { format, differenceInDays, isPast } from "date-fns";
+
+export default function MyRentals() {
+    const [rentals, setRentals] = useState([]);
+    const [user, setUser] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState("active");
+
+    useEffect(() => {
+        loadUserRentals();
+    }, []);
+
+    const loadUserRentals = async () => {
+        setIsLoading(true);
+        try {
+            const currentUser = await User.me();
+            setUser(currentUser);
+
+            const userRentals = await Rental.filter(
+                { user_email: currentUser.email },
+                "-rental_date"
+            );
+            
+            setRentals(userRentals);
+        } catch (error) {
+            console.error("Error loading rentals:", error);
+        }
+        setIsLoading(false);
+    };
+
+    const handleReturnBook = async (rental) => {
+        try {
+            // Update rental status
+            await Rental.update(rental.id, {
+                status: "returned",
+                return_date: new Date().toISOString().split('T')[0]
+            });
+
+            // Update book availability
+            const book = await Book.get(rental.book_id);
+            if (book) {
+                await Book.update(rental.book_id, {
+                    available_copies: (book.available_copies || 0) + 1
+                });
+            }
+
+            // Refresh rentals
+            loadUserRentals();
+        } catch (error) {
+            console.error("Error returning book:", error);
+            alert("Failed to return book. Please try again.");
+        }
+    };
+
+    const getStatusInfo = (rental) => {
+        if (rental.status === 'returned') {
+            return {
+                status: 'returned',
+                text: 'Returned',
+                color: 'bg-green-100 text-green-800',
+                icon: CheckCircle
+            };
+        }
+
+        const dueDate = new Date(rental.due_date);
+        const today = new Date();
+        const daysLeft = differenceInDays(dueDate, today);
+
+        if (isPast(dueDate)) {
+            return {
+                status: 'overdue',
+                text: `Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) > 1 ? 's' : ''}`,
+                color: 'bg-red-100 text-red-800',
+                icon: AlertTriangle
+            };
+        }
+
+        if (daysLeft === 0) {
+            return {
+                status: 'due-today',
+                text: 'Due Today',
+                color: 'bg-amber-100 text-amber-800',
+                icon: Clock
+            };
+        }
+
+        if (daysLeft <= 3) {
+            return {
+                status: 'due-soon',
+                text: `Due in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`,
+                color: 'bg-yellow-100 text-yellow-800',
+                icon: Clock
+            };
+        }
+
+        return {
+            status: 'active',
+            text: `Due in ${daysLeft} days`,
+            color: 'bg-blue-100 text-blue-800',
+            icon: Calendar
+        };
+    };
+
+    const filteredRentals = rentals.filter(rental => {
+        if (activeTab === "active") return rental.status === "active";
+        if (activeTab === "returned") return rental.status === "returned";
+        if (activeTab === "overdue") {
+            const dueDate = new Date(rental.due_date);
+            return rental.status === "active" && isPast(dueDate);
+        }
+        return true;
+    });
+
+    if (isLoading) {
+        return (
+            <div className="p-6">
+                <div className="animate-pulse space-y-6">
+                    <div className="h-8 bg-slate-200 rounded w-64"></div>
+                    <div className="space-y-4">
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className="h-32 bg-slate-200 rounded-xl"></div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-6 max-w-5xl mx-auto">
+            <div className="mb-8">
+                <h1 className="text-3xl font-bold text-slate-800 mb-2">My Book Rentals</h1>
+                <p className="text-slate-600">Manage your borrowed books and rental history</p>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex space-x-1 mb-8 bg-slate-100 p-1 rounded-lg w-fit">
+                {[
+                    { key: "active", label: "Active", count: rentals.filter(r => r.status === "active").length },
+                    { key: "returned", label: "Returned", count: rentals.filter(r => r.status === "returned").length },
+                    { key: "overdue", label: "Overdue", count: rentals.filter(r => r.status === "active" && isPast(new Date(r.due_date))).length }
+                ].map((tab) => (
+                    <Button
+                        key={tab.key}
+                        variant={activeTab === tab.key ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => setActiveTab(tab.key)}
+                        className={activeTab === tab.key ? "bg-white shadow-sm" : ""}
+                    >
+                        {tab.label} ({tab.count})
+                    </Button>
+                ))}
+            </div>
+
+            {/* Rentals List */}
+            <div className="space-y-6">
+                {filteredRentals.length > 0 ? (
+                    filteredRentals.map((rental) => {
+                        const statusInfo = getStatusInfo(rental);
+                        const StatusIcon = statusInfo.icon;
+
+                        return (
+                            <Card key={rental.id} className="hover:shadow-lg transition-shadow duration-200">
+                                <CardContent className="p-6">
+                                    <div className="flex items-start justify-between gap-6">
+                                        <div className="flex-1">
+                                            <div className="flex items-start gap-4">
+                                                <div className="w-16 h-20 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <Calendar className="w-8 h-8 text-blue-600" />
+                                                </div>
+                                                
+                                                <div className="flex-1">
+                                                    <h3 className="text-xl font-bold text-slate-800 mb-1">
+                                                        {rental.book_title}
+                                                    </h3>
+                                                    <p className="text-slate-600 mb-3">by {rental.book_author}</p>
+                                                    
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                                        <div>
+                                                            <span className="text-slate-500">Rented:</span>
+                                                            <p className="font-medium">
+                                                                {format(new Date(rental.rental_date), "MMM d, yyyy")}
+                                                            </p>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-slate-500">Due Date:</span>
+                                                            <p className="font-medium">
+                                                                {format(new Date(rental.due_date), "MMM d, yyyy")}
+                                                            </p>
+                                                        </div>
+                                                        {rental.return_date && (
+                                                            <div>
+                                                                <span className="text-slate-500">Returned:</span>
+                                                                <p className="font-medium">
+                                                                    {format(new Date(rental.return_date), "MMM d, yyyy")}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        <div>
+                                                            <span className="text-slate-500">Status:</span>
+                                                            <Badge className={`${statusInfo.color} flex items-center gap-1 w-fit mt-1`}>
+                                                                <StatusIcon className="w-3 h-3" />
+                                                                {statusInfo.text}
+                                                            </Badge>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {rental.status === "active" && (
+                                            <Button
+                                                onClick={() => handleReturnBook(rental)}
+                                                className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+                                            >
+                                                <CheckCircle className="w-4 h-4" />
+                                                Return Book
+                                            </Button>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        );
+                    })
+                ) : (
+                    <Card>
+                        <CardContent className="p-12 text-center">
+                            <Calendar className="w-16 h-16 mx-auto mb-4 text-slate-300" />
+                            <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                                No {activeTab} rentals
+                            </h3>
+                            <p className="text-slate-600 mb-6">
+                                {activeTab === "active" 
+                                    ? "You don't have any books currently rented."
+                                    : `No ${activeTab} books found.`
+                                }
+                            </p>
+                            {activeTab === "active" && (
+                                <Button asChild>
+                                    <a href={createPageUrl("Books")}>
+                                        Browse Books
+                                    </a>
+                                </Button>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
+        </div>
+    );
+}
