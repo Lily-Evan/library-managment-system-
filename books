@@ -1,0 +1,167 @@
+
+import React, { useState, useEffect, useCallback } from "react";
+import { Book, Rental } from "@/entities/all";
+import { User } from "@/entities/User";
+import { Search, Filter, Grid, List } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { 
+    Select, 
+    SelectContent, 
+    SelectItem, 
+    SelectTrigger, 
+    SelectValue 
+} from "@/components/ui/select";
+
+import BookCard from "../components/books/BookCard";
+import BookList from "../components/books/BookList";
+import BookFilters from "../components/books/BookFilters";
+
+export default function Books() {
+    const [books, setBooks] = useState([]);
+    const [filteredBooks, setFilteredBooks] = useState([]);
+    const [user, setUser] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [selectedGenre, setSelectedGenre] = useState("all");
+    const [sortBy, setSortBy] = useState("title");
+    const [viewMode, setViewMode] = useState("grid");
+    const [showFilters, setShowFilters] = useState(false);
+
+    const loadUser = async () => {
+        try {
+            const currentUser = await User.me();
+            setUser(currentUser);
+        } catch (error) {
+            console.error("Error loading user:", error);
+        }
+    };
+
+    const loadBooks = async () => {
+        setIsLoading(true);
+        try {
+            const booksData = await Book.filter({ status: "active" });
+            setBooks(booksData);
+        } catch (error) {
+            console.error("Error loading books:", error);
+        }
+        setIsLoading(false);
+    };
+
+    const filterBooks = useCallback(() => {
+        let filtered = [...books];
+
+        // Search filter
+        if (searchQuery) {
+            filtered = filtered.filter(book =>
+                book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                book.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                book.description?.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+        }
+
+        // Genre filter
+        if (selectedGenre !== "all") {
+            filtered = filtered.filter(book => book.genre === selectedGenre);
+        }
+
+        // Sort
+        filtered.sort((a, b) => {
+            switch (sortBy) {
+                case "title":
+                    return a.title.localeCompare(b.title);
+                case "author":
+                    return a.author.localeCompare(b.author);
+                case "publication_year":
+                    return (b.publication_year || 0) - (a.publication_year || 0);
+                case "popularity":
+                    return (b.available_copies || 0) - (a.available_copies || 0);
+                default:
+                    return 0;
+            }
+        });
+
+        setFilteredBooks(filtered);
+    }, [books, searchQuery, selectedGenre, sortBy]);
+
+    useEffect(() => {
+        loadBooks();
+        loadUser();
+    }, []);
+
+    useEffect(() => {
+        filterBooks();
+    }, [filterBooks]);
+
+    const handleRentBook = async (bookId, bookTitle, bookAuthor) => {
+        try {
+            // Check if book is available
+            const book = books.find(b => b.id === bookId);
+            if (!book || book.available_copies <= 0) {
+                alert("This book is not available for rent.");
+                return;
+            }
+
+            // Calculate due date (2 weeks from now)
+            const dueDate = new Date();
+            dueDate.setDate(dueDate.getDate() + 14);
+
+            // Create rental record
+            await Rental.create({
+                book_id: bookId,
+                book_title: bookTitle,
+                book_author: bookAuthor,
+                user_email: user.email,
+                user_name: user.full_name,
+                rental_date: new Date().toISOString().split('T')[0],
+                due_date: dueDate.toISOString().split('T')[0],
+                status: "active"
+            });
+
+            // Update book availability
+            await Book.update(bookId, {
+                available_copies: book.available_copies - 1
+            });
+
+            // Refresh books list
+            loadBooks();
+            alert("Book rented successfully!");
+        } catch (error) {
+            console.error("Error renting book:", error);
+            alert("Failed to rent book. Please try again.");
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <div className="p-6">
+                <div className="animate-pulse space-y-6">
+                    <div className="h-8 bg-slate-200 rounded w-64"></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                            <div key={i} className="h-96 bg-slate-200 rounded-xl"></div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-6 max-w-7xl mx-auto">
+            {/* Header */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-800 mb-2">Book Catalog</h1>
+                    <p className="text-slate-600">
+                        Discover and borrow from our collection of {books.length} books
+                    </p>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowFilters(!showFilters)}
+                        className="md:hidden"
+ 
