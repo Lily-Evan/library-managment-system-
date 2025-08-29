@@ -1,0 +1,73 @@
+import React from "react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { BookOpen, Plus, Search, Settings } from "lucide-react";
+
+export default function QuickActions({ userRole }) {
+    const actions = [
+        {
+            title: "Browse Books",
+            description: "Explore our book catalog",
+            icon: BookOpen,
+            href: createPageUrl("Books"),
+            color: "from-blue-500 to-blue-600"
+        },
+        {
+            title: "Search Library",
+            description: "Find specific books or authors",
+            icon: Search,
+            href: createPageUrl("Books"),
+            color: "from-green-500 to-green-600"
+        }
+    ];
+
+    if (userRole === 'admin') {
+        actions.push({
+            title: "Add New Book",
+            description: "Add books to the catalog",
+            icon: Plus,
+            href: createPageUrl("Admin"),
+            color: "from-purple-500 to-purple-600"
+        });
+        actions.push({
+            title: "Manage Library",
+            description: "Administrative controls",
+            icon: Settings,
+            href: createPageUrl("Admin"),
+            color: "from-amber-500 to-amber-600"
+        });
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="text-xl font-bold text-slate-800">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {actions.map((action, index) => (
+                        <Link key={index} to={action.href}>
+                            <div className="p-4 border border-slate-200 rounded-xl hover:shadow-lg transition-all duration-200 group cursor-pointer">
+                                <div className="flex items-start gap-4">
+                                    <div className={`p-3 rounded-lg bg-gradient-to-br ${action.color} group-hover:scale-110 transition-transform duration-200`}>
+                                        <action.icon className="w-5 h-5 text-white" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
+                                            {action.title}
+                                        </h3>
+                                        <p className="text-sm text-slate-600 mt-1">
+                                            {action.description}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </Link>
+                    ))}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
