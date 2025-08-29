@@ -1,0 +1,167 @@
+import React, { useState, useEffect } from "react";
+import { Book, Rental } from "@/entities/all";
+import { User } from "@/entities/User";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { 
+    BookOpen, 
+    Users, 
+    Calendar, 
+    TrendingUp,
+    Plus,
+    Search,
+    Clock,
+    Star
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+
+import StatsCard from "../components/dashboard/StatsCard";
+import RecentActivity from "../components/dashboard/RecentActivity";
+import PopularBooks from "../components/dashboard/PopularBooks";
+import QuickActions from "../components/dashboard/QuickActions";
+
+export default function Dashboard() {
+    const [user, setUser] = useState(null);
+    const [stats, setStats] = useState({
+        totalBooks: 0,
+        availableBooks: 0,
+        activeRentals: 0,
+        overdueRentals: 0
+    });
+    const [recentBooks, setRecentBooks] = useState([]);
+    const [recentRentals, setRecentRentals] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        loadDashboardData();
+    }, []);
+
+    const loadDashboardData = async () => {
+        setIsLoading(true);
+        try {
+            const currentUser = await User.me();
+            setUser(currentUser);
+
+            // Load statistics
+            const [books, rentals] = await Promise.all([
+                Book.list(),
+                Rental.list()
+            ]);
+
+            const activeRentals = rentals.filter(r => r.status === 'active');
+            const overdueRentals = rentals.filter(r => {
+                if (r.status !== 'active') return false;
+                const dueDate = new Date(r.due_date);
+                return dueDate < new Date();
+            });
+
+            setStats({
+                totalBooks: books.length,
+                availableBooks: books.reduce((sum, book) => sum + (book.available_copies || 0), 0),
+                activeRentals: activeRentals.length,
+                overdueRentals: overdueRentals.length
+            });
+
+            // Load recent data
+            setRecentBooks(books.slice(0, 5));
+            setRecentRentals(rentals.filter(r => r.user_email === currentUser.email).slice(0, 5));
+        } catch (error) {
+            console.error("Error loading dashboard data:", error);
+        }
+        setIsLoading(false);
+    };
+
+    if (isLoading) {
+        return (
+            <div className="p-6">
+                <div className="animate-pulse space-y-6">
+                    <div className="h-8 bg-slate-200 rounded w-64"></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {[1, 2, 3, 4].map(i => (
+                            <div key={i} className="h-32 bg-slate-200 rounded-xl"></div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-6 max-w-7xl mx-auto">
+            <div className="mb-8">
+                <h1 className="text-3xl font-bold text-slate-800 mb-2">
+                    Welcome back, {user?.full_name?.split(' ')[0]}!
+                </h1>
+                <p className="text-slate-600">
+                    Manage your library experience from your personal dashboard.
+                </p>
+            </div>
+
+            {/* Statistics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <StatsCard
+                    title="Total Books"
+                    value={stats.totalBooks}
+                    icon={BookOpen}
+                    gradient="from-blue-500 to-blue-600"
+                    description="In library catalog"
+                />
+                <StatsCard
+                    title="Available Copies"
+                    value={stats.availableBooks}
+                    icon={Users}
+                    gradient="from-green-500 to-green-600"
+                    description="Ready to borrow"
+                />
+                <StatsCard
+                    title="Active Rentals"
+                    value={stats.activeRentals}
+                    icon={Calendar}
+                    gradient="from-amber-500 to-amber-600"
+                    description="Currently borrowed"
+                />
+                <StatsCard
+                    title="Overdue Books"
+                    value={stats.overdueRentals}
+                    icon={Clock}
+                    gradient="from-red-500 to-red-600"
+                    description="Past due date"
+                />
+            </div>
+
+            {/* Main Content Grid */}
+            <div className="grid lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 space-y-8">
+                    <QuickActions userRole={user?.role} />
+                    <RecentActivity rentals={recentRentals} />
+                </div>
+                
+                <div className="space-y-8">
+                    <PopularBooks books={recentBooks} />
+                    
+                    {/* AI Recommendations Card */}
+                    <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-indigo-800">
+                                <Star className="w-5 h-5" />
+                                AI Recommendations
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-sm text-indigo-700 mb-4">
+                                Get personalized book recommendations based on your reading history.
+                            </p>
+                            <Button 
+                                size="sm" 
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                            >
+                                Get Recommendations
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        </div>
+    );
+}
