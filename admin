@@ -1,0 +1,167 @@
+import React, { useState, useEffect } from "react";
+import { Book, Rental } from "@/entities/all";
+import { User } from "@/entities/User";
+import { createPageUrl } from "@/utils";
+import { InvokeLLM } from "@/integrations/Core";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, Sparkles, Settings, Users, BookOpen } from "lucide-react";
+
+import BookManagement from "../components/admin/BookManagement";
+import RentalManagement from "../components/admin/RentalManagement";
+import AIAssistant from "../components/admin/AIAssistant";
+import AdminStats from "../components/admin/AdminStats";
+
+export default function Admin() {
+    const [user, setUser] = useState(null);
+    const [stats, setStats] = useState({
+        totalBooks: 0,
+        totalRentals: 0,
+        activeRentals: 0,
+        overdueRentals: 0
+    });
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        checkAdminAccess();
+        loadAdminData();
+    }, []);
+
+    const checkAdminAccess = async () => {
+        try {
+            const currentUser = await User.me();
+            if (currentUser.role !== 'admin') {
+                window.location.href = createPageUrl("Dashboard");
+                return;
+            }
+            setUser(currentUser);
+        } catch (error) {
+            console.error("Error checking admin access:", error);
+        }
+    };
+
+    const loadAdminData = async () => {
+        setIsLoading(true);
+        try {
+            const [books, rentals] = await Promise.all([
+                Book.list(),
+                Rental.list()
+            ]);
+
+            const activeRentals = rentals.filter(r => r.status === 'active');
+            const overdueRentals = rentals.filter(r => {
+                if (r.status !== 'active') return false;
+                const dueDate = new Date(r.due_date);
+                return dueDate < new Date();
+            });
+
+            setStats({
+                totalBooks: books.length,
+                totalRentals: rentals.length,
+                activeRentals: activeRentals.length,
+                overdueRentals: overdueRentals.length
+            });
+        } catch (error) {
+            console.error("Error loading admin data:", error);
+        }
+        setIsLoading(false);
+    };
+
+    if (isLoading) {
+        return (
+            <div className="p-6">
+                <div className="animate-pulse space-y-6">
+                    <div className="h-8 bg-slate-200 rounded w-64"></div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        {[1, 2, 3, 4].map(i => (
+                            <div key={i} className="h-32 bg-slate-200 rounded-xl"></div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-6 max-w-7xl mx-auto">
+            <div className="mb-8">
+                <h1 className="text-3xl font-bold text-slate-800 mb-2">Admin Dashboard</h1>
+                <p className="text-slate-600">Manage your library system and operations</p>
+            </div>
+
+            {/* Stats Overview */}
+            <AdminStats stats={stats} />
+
+            {/* Main Admin Tabs */}
+            <Tabs defaultValue="books" className="mt-8">
+                <TabsList className="grid w-full grid-cols-4 bg-slate-100 p-1 rounded-xl">
+                    <TabsTrigger value="books" className="flex items-center gap-2 data-[state=active]:bg-white">
+                        <BookOpen className="w-4 h-4" />
+                        Books
+                    </TabsTrigger>
+                    <TabsTrigger value="rentals" className="flex items-center gap-2 data-[state=active]:bg-white">
+                        <Users className="w-4 h-4" />
+                        Rentals
+                    </TabsTrigger>
+                    <TabsTrigger value="ai-assistant" className="flex items-center gap-2 data-[state=active]:bg-white">
+                        <Sparkles className="w-4 h-4" />
+                        AI Assistant
+                    </TabsTrigger>
+                    <TabsTrigger value="settings" className="flex items-center gap-2 data-[state=active]:bg-white">
+                        <Settings className="w-4 h-4" />
+                        Settings
+                    </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="books" className="mt-6">
+                    <BookManagement onDataChange={loadAdminData} />
+                </TabsContent>
+
+                <TabsContent value="rentals" className="mt-6">
+                    <RentalManagement onDataChange={loadAdminData} />
+                </TabsContent>
+
+                <TabsContent value="ai-assistant" className="mt-6">
+                    <AIAssistant onDataChange={loadAdminData} />
+                </TabsContent>
+
+                <TabsContent value="settings" className="mt-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Settings className="w-5 h-5" />
+                                System Settings
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-slate-600 mb-4">
+                                Configure your library management system settings.
+                            </p>
+                            <div className="space-y-4">
+                                <div className="p-4 border border-slate-200 rounded-lg">
+                                    <h4 className="font-semibold mb-2">Rental Duration</h4>
+                                    <p className="text-sm text-slate-600">
+                                        Default rental period is set to 14 days. This can be customized per book category.
+                                    </p>
+                                </div>
+                                <div className="p-4 border border-slate-200 rounded-lg">
+                                    <h4 className="font-semibold mb-2">Late Fees</h4>
+                                    <p className="text-sm text-slate-600">
+                                        Configure late return penalties and notification schedules.
+                                    </p>
+                                </div>
+                                <div className="p-4 border border-slate-200 rounded-lg">
+                                    <h4 className="font-semibold mb-2">User Management</h4>
+                                    <p className="text-sm text-slate-600">
+                                        Manage user roles, permissions, and access levels.
+                                    </p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
+        </div>
+    );
+}
